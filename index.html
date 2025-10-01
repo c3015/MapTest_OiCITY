@@ -27,11 +27,169 @@
             color: white;
             padding: 1rem 2rem;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 1000;
         }
         
         h1 {
             font-size: 1.5rem;
             font-weight: 600;
+        }
+        
+        .header-buttons {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .location-btn {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .location-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .menu-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s;
+        }
+        
+        .menu-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .menu-btn span {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: white;
+            transition: all 0.3s;
+        }
+        
+        .menu-btn.active span:nth-child(1) {
+            transform: rotate(45deg) translate(5px, 5px);
+        }
+        
+        .menu-btn.active span:nth-child(2) {
+            opacity: 0;
+        }
+        
+        .menu-btn.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(5px, -5px);
+        }
+        
+        .slide-menu {
+            position: fixed;
+            top: 0;
+            right: -350px;
+            width: 350px;
+            height: 100vh;
+            background: white;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.2);
+            transition: right 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            z-index: 999;
+            overflow-y: auto;
+        }
+        
+        .slide-menu.open {
+            right: 0;
+        }
+        
+        .menu-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            z-index: 998;
+        }
+        
+        .menu-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .menu-header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            color: white;
+            padding: 2rem;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        
+        .menu-section {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .menu-section h3 {
+            font-size: 0.9rem;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+            letter-spacing: 1px;
+        }
+        
+        .menu-item {
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .menu-item:hover {
+            background: #e9ecef;
+            transform: translateX(-5px);
+        }
+        
+        .menu-item-icon {
+            font-size: 1.5rem;
+        }
+        
+        .menu-item-text {
+            flex: 1;
+        }
+        
+        .menu-item-text h4 {
+            font-size: 1rem;
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+        
+        .menu-item-text p {
+            font-size: 0.8rem;
+            color: #666;
         }
         
         .container {
@@ -277,8 +435,95 @@
 <body>
     <header>
         <h1>🍽️ 飲食店マップ検索</h1>
-        <button id="locationBtn" onclick="goToCurrentLocation()" style="position: absolute; right: 2rem; top: 50%; transform: translateY(-50%); padding: 0.5rem 1rem; background: rgba(255,255,255,0.2); border: 2px solid white; color: white; border-radius: 8px; cursor: pointer; font-weight: 600;">📍 現在地</button>
+        <div class="header-buttons">
+            <button class="location-btn" onclick="goToCurrentLocation()">📍 現在地</button>
+            <div class="menu-btn" onclick="toggleMenu()">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
     </header>
+    
+    <!-- オーバーレイ -->
+    <div class="menu-overlay" onclick="toggleMenu()"></div>
+    
+    <!-- スライドメニュー -->
+    <div class="slide-menu">
+        <div class="menu-header">メニュー</div>
+        
+        <div class="menu-section">
+            <h3>ページ</h3>
+            <div class="menu-item" onclick="alert('マイページ機能は開発中です')">
+                <div class="menu-item-icon">👤</div>
+                <div class="menu-item-text">
+                    <h4>マイページ</h4>
+                    <p>プロフィールと統計</p>
+                </div>
+            </div>
+            <div class="menu-item" onclick="alert('お気に入り機能は開発中です')">
+                <div class="menu-item-icon">⭐</div>
+                <div class="menu-item-text">
+                    <h4>お気に入り</h4>
+                    <p>保存した飲食店</p>
+                </div>
+            </div>
+            <div class="menu-item" onclick="alert('履歴機能は開発中です')">
+                <div class="menu-item-icon">🕐</div>
+                <div class="menu-item-text">
+                    <h4>閲覧履歴</h4>
+                    <p>最近見た店舗</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="menu-section">
+            <h3>リスト管理</h3>
+            <div class="menu-item" onclick="alert('リスト作成機能は開発中です')">
+                <div class="menu-item-icon">📋</div>
+                <div class="menu-item-text">
+                    <h4>マイリスト</h4>
+                    <p>カスタムリストを管理</p>
+                </div>
+            </div>
+            <div class="menu-item" onclick="alert('リスト共有機能は開発中です')">
+                <div class="menu-item-icon">🔗</div>
+                <div class="menu-item-text">
+                    <h4>共有リスト</h4>
+                    <p>友達とリストを共有</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="menu-section">
+            <h3>設定</h3>
+            <div class="menu-item" onclick="alert('設定機能は開発中です')">
+                <div class="menu-item-icon">⚙️</div>
+                <div class="menu-item-text">
+                    <h4>アプリ設定</h4>
+                    <p>表示設定とプライバシー</p>
+                </div>
+            </div>
+            <div class="menu-item" onclick="alert('ヘルプ機能は開発中です')">
+                <div class="menu-item-icon">❓</div>
+                <div class="menu-item-text">
+                    <h4>ヘルプ</h4>
+                    <p>使い方とFAQ</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="menu-section">
+            <h3>情報</h3>
+            <div class="menu-item" onclick="alert('このアプリについて:\n\nOpenStreetMapとFirebaseを使用した飲食店検索アプリです。')">
+                <div class="menu-item-icon">ℹ️</div>
+                <div class="menu-item-text">
+                    <h4>アプリについて</h4>
+                    <p>バージョン 1.0.0</p>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div class="container">
         <div id="map"></div>
@@ -339,11 +584,21 @@
                         <option value="カフェ">☕ カフェ</option>
                         <option value="居酒屋">🍺 居酒屋</option>
                         <option value="イタリアン">🍝 イタリアン</option>
+                        <option value="フレンチ">🥐 フレンチ</option>
                         <option value="和食">🍱 和食</option>
                         <option value="中華">🥟 中華</option>
+                        <option value="韓国料理">🌶️ 韓国料理</option>
+                        <option value="タイ料理">🍛 タイ料理</option>
+                        <option value="インド料理">🍛 インド料理</option>
                         <option value="焼肉">🥩 焼肉</option>
                         <option value="寿司">🍣 寿司</option>
+                        <option value="天ぷら">🍤 天ぷら</option>
+                        <option value="そば・うどん">🍜 そば・うどん</option>
+                        <option value="お好み焼き">🥞 お好み焼き</option>
                         <option value="ファストフード">🍔 ファストフード</option>
+                        <option value="ベーカリー">🥖 ベーカリー</option>
+                        <option value="スイーツ">🍰 スイーツ</option>
+                        <option value="バー">🍸 バー</option>
                         <option value="その他">🍴 その他</option>
                     </select>
                 </div>
@@ -496,11 +751,21 @@
             'カフェ': '☕',
             '居酒屋': '🍺',
             'イタリアン': '🍝',
+            'フレンチ': '🥐',
             '和食': '🍱',
             '中華': '🥟',
+            '韓国料理': '🌶️',
+            'タイ料理': '🍛',
+            'インド料理': '🍛',
             '焼肉': '🥩',
             '寿司': '🍣',
+            '天ぷら': '🍤',
+            'そば・うどん': '🍜',
+            'お好み焼き': '🥞',
             'ファストフード': '🍔',
+            'ベーカリー': '🥖',
+            'スイーツ': '🍰',
+            'バー': '🍸',
             'その他': '🍴',
             'restaurant': '🍴',
             'cafe': '☕',
@@ -883,6 +1148,16 @@
             } else {
                 alert('お使いのブラウザは位置情報に対応していません');
             }
+        };
+        
+        window.toggleMenu = function() {
+            const menu = document.querySelector('.slide-menu');
+            const overlay = document.querySelector('.menu-overlay');
+            const menuBtn = document.querySelector('.menu-btn');
+            
+            menu.classList.toggle('open');
+            overlay.classList.toggle('active');
+            menuBtn.classList.toggle('active');
         };
         
         function showStatus(message, type) {
