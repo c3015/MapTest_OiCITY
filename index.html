@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenStreetMap + Firebase</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        #map {
+            flex: 1;
+            height: 100%;
+        }
+        
+        .sidebar {
+            width: 320px;
+            background: #f8f9fa;
+            padding: 1.5rem;
+            overflow-y: auto;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.05);
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .markers-list {
+            margin-top: 2rem;
+        }
+        
+        .markers-list h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+        
+        .marker-item {
+            background: white;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .marker-item h4 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        
+        .marker-item p {
+            color: #666;
+            font-size: 0.85rem;
+        }
+        
+        .config-note {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🗺️ OpenStreetMap + Firebase マップアプリ</h1>
+    </header>
+    
+    <div class="container">
+        <div id="map"></div>
+        
+        <div class="sidebar">
+            <div class="config-note">
+                <strong>⚠️ Firebase設定が必要です</strong><br>
+                script.jsのfirebaseConfig部分に、あなたのFirebaseプロジェクトの設定情報を入力してください。
+            </div>
+            
+            <div class="form-group">
+                <label for="markerName">マーカー名</label>
+                <input type="text" id="markerName" placeholder="例: 東京タワー">
+            </div>
+            
+            <div class="form-group">
+                <label for="markerDesc">説明</label>
+                <textarea id="markerDesc" placeholder="マーカーの説明を入力..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>座標 (マップをクリックして選択)</label>
+                <input type="text" id="coordinates" readonly placeholder="マップ上をクリック">
+            </div>
+            
+            <button onclick="saveMarker()">📍 マーカーを保存</button>
+            
+            <div id="status" class="status"></div>
+            
+            <div class="markers-list">
+                <h3>保存済みマーカー</h3>
+                <div id="markersList"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    
+    <!-- Firebase JS (v9 modular) -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // Firebase設定（ここに自分のFirebase設定を入力）
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        
+        // Firebase初期化
+        let app, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            console.log("Firebase接続成功");
+        } catch (error) {
+            console.error("Firebase初期化エラー:", error);
+        }
+        
+        // マップ初期化
+        const map = L.map('map').setView([35.6762, 139.6503], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        let currentMarker = null;
+        let selectedLat = null;
+        let selectedLng = null;
+        
+        // マップクリックイベント
+        map.on('click', function(e) {
+            selectedLat = e.latlng.lat;
+            selectedLng = e.latlng.lng;
+            
+            document.getElementById('coordinates').value = 
+                `緯度: ${selectedLat.toFixed(6)}, 経度: ${selectedLng.toFixed(6)}`;
+            
+            if (currentMarker) {
+                map.removeLayer(currentMarker);
+            }
+            
+            currentMarker = L.marker([selectedLat, selectedLng]).addTo(map);
+        });
+        
+        // マーカー保存
+        window.saveMarker = async function() {
+            const name = document.getElementById('markerName').value;
+            const description = document.getElementById('markerDesc').value;
+            const status = document.getElementById('status');
+            
+            if (!name || !selectedLat || !selectedLng) {
+                showStatus('マーカー名と座標を入力してください', 'error');
+                return;
+            }
+            
+            if (!db) {
+                showStatus('Firebaseが設定されていません', 'error');
+                return;
+            }
+            
+            try {
+                await addDoc(collection(db, 'markers'), {
+                    name: name,
+                    description: description,
+                    latitude: selectedLat,
+                    longitude: selectedLng,
+                    timestamp: new Date().toISOString()
+                });
+                
+                showStatus('マーカーを保存しました！', 'success');
+                document.getElementById('markerName').value = '';
+                document.getElementById('markerDesc').value = '';
+                
+                loadMarkers();
+            } catch (error) {
+                showStatus('保存エラー: ' + error.message, 'error');
+            }
+        };
+        
+        // マーカー読み込み
+        async function loadMarkers() {
+            if (!db) return;
+            
+            try {
+                const q = query(collection(db, 'markers'), orderBy('timestamp', 'desc'));
+                const querySnapshot = await getDocs(q);
+                const markersList = document.getElementById('markersList');
+                markersList.innerHTML = '';
+                
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    
+                    // マップにマーカー追加
+                    const marker = L.marker([data.latitude, data.longitude])
+                        .addTo(map)
+                        .bindPopup(`<strong>${data.name}</strong><br>${data.description || ''}`);
+                    
+                    // サイドバーにリスト追加
+                    const item = document.createElement('div');
+                    item.className = 'marker-item';
+                    item.innerHTML = `
+                        <h4>${data.name}</h4>
+                        <p>${data.description || '説明なし'}</p>
+                    `;
+                    item.onclick = () => {
+                        map.setView([data.latitude, data.longitude], 15);
+                        marker.openPopup();
+                    };
+                    markersList.appendChild(item);
+                });
+            } catch (error) {
+                console.error('マーカー読み込みエラー:', error);
+            }
+        }
+        
+        // ステータス表示
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+        
+        // 初期読み込み
+        if (db) {
+            loadMarkers();
+        }
+    </script>
+</body>
+</html>
