@@ -277,6 +277,7 @@
 <body>
     <header>
         <h1>🍽️ 飲食店マップ検索</h1>
+        <button id="locationBtn" onclick="goToCurrentLocation()" style="position: absolute; right: 2rem; top: 50%; transform: translateY(-50%); padding: 0.5rem 1rem; background: rgba(255,255,255,0.2); border: 2px solid white; color: white; border-radius: 8px; cursor: pointer; font-weight: 600;">📍 現在地</button>
     </header>
     
     <div class="container">
@@ -414,6 +415,42 @@
         let selectedLng = null;
         let allRestaurants = [];
         let currentFilter = 'all';
+        let userLocationMarker = null;
+        
+        // 現在地を取得してマップを移動
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    // マップを現在地に移動
+                    map.setView([lat, lng], 15);
+                    
+                    // 現在地マーカーを追加
+                    const userIcon = L.divIcon({
+                        html: '<div style="font-size: 30px; text-align: center;">📍</div>',
+                        className: 'user-location-marker',
+                        iconSize: [30, 30]
+                    });
+                    
+                    userLocationMarker = L.marker([lat, lng], { icon: userIcon })
+                        .addTo(map)
+                        .bindPopup('📍 現在地');
+                    
+                    console.log(`現在地取得成功: ${lat}, ${lng}`);
+                },
+                (error) => {
+                    console.error('現在地取得エラー:', error.message);
+                    // エラー時は東京駅をデフォルト表示
+                    map.setView([35.6812, 139.7671], 13);
+                }
+            );
+        } else {
+            console.log('Geolocation APIに対応していません');
+            // 対応していない場合は東京駅をデフォルト表示
+            map.setView([35.6812, 139.7671], 13);
+        }
         
         // カテゴリ別のマーカーアイコン
         const categoryIcons = {
@@ -596,6 +633,28 @@
             } else {
                 document.querySelector('.tab:last-child').classList.add('active');
                 document.getElementById('search-tab').classList.add('active');
+            }
+        };
+        
+        window.goToCurrentLocation = function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        
+                        map.setView([lat, lng], 15);
+                        
+                        if (userLocationMarker) {
+                            userLocationMarker.openPopup();
+                        }
+                    },
+                    (error) => {
+                        alert('現在地を取得できませんでした: ' + error.message);
+                    }
+                );
+            } else {
+                alert('お使いのブラウザは位置情報に対応していません');
             }
         };
         
