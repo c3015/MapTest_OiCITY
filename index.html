@@ -285,8 +285,43 @@
         
         <div class="sidebar">
             <div class="tabs">
-                <div class="tab active" onclick="switchTab('add')">➕ 追加</div>
-                <div class="tab" onclick="switchTab('search')">🔍 検索</div>
+                <div class="tab active" onclick="switchTab('search')">🔍 周囲を検索</div>
+                <div class="tab" onclick="switchTab('add')">➕ 追加</div>
+                <div class="tab" onclick="switchTab('mylist')">📋 マイリスト</div>
+            </div>
+            
+            <!-- 周囲検索タブ -->
+            <div id="search-tab" class="tab-content active">
+                <div class="form-group">
+                    <label for="searchRadius">検索範囲</label>
+                    <select id="searchRadius">
+                        <option value="500">500m</option>
+                        <option value="1000" selected>1km</option>
+                        <option value="2000">2km</option>
+                        <option value="5000">5km</option>
+                    </select>
+                </div>
+                
+                <button onclick="searchNearbyRestaurants()" style="margin-bottom: 1rem;">🔍 周囲の飲食店を検索</button>
+                
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="店名で絞り込み..." onkeyup="filterDisplayedRestaurants()">
+                    <span class="search-icon">🔍</span>
+                </div>
+                
+                <div class="filter-chips">
+                    <div class="chip active" data-category="all" onclick="filterByCategory('all')">すべて</div>
+                    <div class="chip" data-category="restaurant" onclick="filterByCategory('restaurant')">🍴 レストラン</div>
+                    <div class="chip" data-category="cafe" onclick="filterByCategory('cafe')">☕ カフェ</div>
+                    <div class="chip" data-category="fast_food" onclick="filterByCategory('fast_food')">🍔 ファストフード</div>
+                    <div class="chip" data-category="bar" onclick="filterByCategory('bar')">🍺 バー</div>
+                </div>
+                
+                <div id="searchStatus" style="padding: 1rem; background: #e3f2fd; border-radius: 8px; margin-bottom: 1rem; display: none;">
+                    検索中...
+                </div>
+                
+                <div class="restaurant-list" id="nearbyList"></div>
             </div>
             
             <!-- 追加タブ -->
@@ -354,21 +389,21 @@
                 <div id="status" class="status"></div>
             </div>
             
-            <!-- 検索タブ -->
-            <div id="search-tab" class="tab-content">
+            <!-- マイリストタブ -->
+            <div id="mylist-tab" class="tab-content">
                 <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="店名で検索..." onkeyup="searchRestaurants()">
+                    <input type="text" id="myListSearch" placeholder="店名で検索..." onkeyup="searchMyRestaurants()">
                     <span class="search-icon">🔍</span>
                 </div>
                 
                 <div class="filter-chips">
-                    <div class="chip active" data-category="all" onclick="filterByCategory('all')">すべて</div>
-                    <div class="chip" data-category="ラーメン" onclick="filterByCategory('ラーメン')">🍜</div>
-                    <div class="chip" data-category="カフェ" onclick="filterByCategory('カフェ')">☕</div>
-                    <div class="chip" data-category="居酒屋" onclick="filterByCategory('居酒屋')">🍺</div>
-                    <div class="chip" data-category="イタリアン" onclick="filterByCategory('イタリアン')">🍝</div>
-                    <div class="chip" data-category="和食" onclick="filterByCategory('和食')">🍱</div>
-                    <div class="chip" data-category="中華" onclick="filterByCategory('中華')">🥟</div>
+                    <div class="chip active" data-category="all" onclick="filterMyList('all')">すべて</div>
+                    <div class="chip" data-category="ラーメン" onclick="filterMyList('ラーメン')">🍜</div>
+                    <div class="chip" data-category="カフェ" onclick="filterMyList('カフェ')">☕</div>
+                    <div class="chip" data-category="居酒屋" onclick="filterMyList('居酒屋')">🍺</div>
+                    <div class="chip" data-category="イタリアン" onclick="filterMyList('イタリアン')">🍝</div>
+                    <div class="chip" data-category="和食" onclick="filterMyList('和食')">🍱</div>
+                    <div class="chip" data-category="中華" onclick="filterMyList('中華')">🥟</div>
                 </div>
                 
                 <div class="restaurant-list" id="restaurantList"></div>
@@ -416,6 +451,9 @@
         let allRestaurants = [];
         let currentFilter = 'all';
         let userLocationMarker = null;
+        let nearbyRestaurants = [];
+        let currentTab = 'search';
+        let myListFilter = 'all';
         
         // 現在地を取得してマップを移動
         if (navigator.geolocation) {
@@ -463,7 +501,159 @@
             '焼肉': '🥩',
             '寿司': '🍣',
             'ファストフード': '🍔',
-            'その他': '🍴'
+            'その他': '🍴',
+            'restaurant': '🍴',
+            'cafe': '☕',
+            'fast_food': '🍔',
+            'bar': '🍺',
+            'pub': '🍻'
+        };
+        
+        // Overpass APIで周囲の飲食店を検索
+        window.searchNearbyRestaurants = async function() {
+            const radius = document.getElementById('searchRadius').value;
+            const statusDiv = document.getElementById('searchStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = '検索中...';
+            
+            if (!userLocationMarker) {
+                statusDiv.textContent = '現在地を取得してください';
+                statusDiv.style.background = '#ffebee';
+                return;
+            }
+            
+            const lat = userLocationMarker.getLatLng().lat;
+            const lng = userLocationMarker.getLatLng().lng;
+            
+            // Overpass API クエリ
+            const query = `
+                [out:json][timeout:25];
+                (
+                    node["amenity"="restaurant"](around:${radius},${lat},${lng});
+                    node["amenity"="cafe"](around:${radius},${lat},${lng});
+                    node["amenity"="fast_food"](around:${radius},${lat},${lng});
+                    node["amenity"="bar"](around:${radius},${lat},${lng});
+                    node["amenity"="pub"](around:${radius},${lat},${lng});
+                );
+                out body;
+            `;
+            
+            try {
+                const response = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: query
+                });
+                
+                const data = await response.json();
+                nearbyRestaurants = data.elements.map(el => ({
+                    id: el.id,
+                    name: el.tags.name || '名称不明',
+                    category: el.tags.amenity,
+                    cuisine: el.tags.cuisine || '',
+                    latitude: el.lat,
+                    longitude: el.lon,
+                    address: el.tags['addr:full'] || el.tags['addr:street'] || '',
+                    phone: el.tags.phone || '',
+                    website: el.tags.website || '',
+                    opening_hours: el.tags.opening_hours || '',
+                    source: 'openstreetmap'
+                }));
+                
+                statusDiv.textContent = `${nearbyRestaurants.length}件見つかりました`;
+                statusDiv.style.background = '#e8f5e9';
+                
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+                
+                displayNearbyRestaurants(nearbyRestaurants);
+            } catch (error) {
+                console.error('検索エラー:', error);
+                statusDiv.textContent = '検索に失敗しました';
+                statusDiv.style.background = '#ffebee';
+            }
+        };
+        
+        function displayNearbyRestaurants(restaurants) {
+            // 既存の検索結果マーカーを削除
+            map.eachLayer((layer) => {
+                if (layer instanceof L.Marker && 
+                    layer !== currentMarker && 
+                    layer !== userLocationMarker &&
+                    !layer.options.isMyRestaurant) {
+                    map.removeLayer(layer);
+                }
+            });
+            
+            const nearbyList = document.getElementById('nearbyList');
+            nearbyList.innerHTML = '';
+            
+            if (restaurants.length === 0) {
+                nearbyList.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">検索結果がありません</p>';
+                return;
+            }
+            
+            restaurants.forEach((data) => {
+                const icon = categoryIcons[data.category] || '🍴';
+                const customIcon = L.divIcon({
+                    html: `<div style="font-size: 24px;">${icon}</div>`,
+                    className: 'custom-marker',
+                    iconSize: [30, 30]
+                });
+                
+                const marker = L.marker([data.latitude, data.longitude], { icon: customIcon })
+                    .addTo(map)
+                    .bindPopup(`
+                        <strong>${data.name}</strong><br>
+                        ${data.cuisine ? `料理: ${data.cuisine}<br>` : ''}
+                        ${data.address ? `住所: ${data.address}<br>` : ''}
+                        ${data.phone ? `電話: ${data.phone}<br>` : ''}
+                        ${data.opening_hours ? `営業時間: ${data.opening_hours}<br>` : ''}
+                        <small>出典: OpenStreetMap</small>
+                    `);
+                
+                const categoryName = {
+                    'restaurant': 'レストラン',
+                    'cafe': 'カフェ',
+                    'fast_food': 'ファストフード',
+                    'bar': 'バー',
+                    'pub': 'パブ'
+                }[data.category] || data.category;
+                
+                const item = document.createElement('div');
+                item.className = 'restaurant-item';
+                item.innerHTML = `
+                    <h4>
+                        ${icon} ${data.name}
+                        <span class="category-badge">${categoryName}</span>
+                    </h4>
+                    ${data.cuisine ? `<p>料理: ${data.cuisine}</p>` : ''}
+                    ${data.address ? `<p>📍 ${data.address}</p>` : ''}
+                    ${data.opening_hours ? `<p>🕐 ${data.opening_hours}</p>` : ''}
+                `;
+                item.onclick = () => {
+                    map.setView([data.latitude, data.longitude], 17);
+                    marker.openPopup();
+                };
+                nearbyList.appendChild(item);
+            });
+        }
+        
+        window.filterDisplayedRestaurants = function() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            
+            let filtered = currentFilter === 'all' 
+                ? nearbyRestaurants 
+                : nearbyRestaurants.filter(r => r.category === currentFilter);
+            
+            if (searchTerm) {
+                filtered = filtered.filter(r => 
+                    r.name.toLowerCase().includes(searchTerm) ||
+                    (r.cuisine && r.cuisine.toLowerCase().includes(searchTerm))
+                );
+            }
+            
+            displayNearbyRestaurants(filtered);
         };
         
         map.on('click', function(e) {
@@ -536,18 +726,24 @@
                 allRestaurants = [];
                 
                 querySnapshot.forEach((doc) => {
-                    allRestaurants.push({ id: doc.id, ...doc.data() });
+                    allRestaurants.push({ id: doc.id, source: 'firebase', ...doc.data() });
                 });
                 
-                displayRestaurants(allRestaurants);
+                if (currentTab === 'mylist') {
+                    displayMyRestaurants(allRestaurants);
+                }
             } catch (error) {
                 console.error('読み込みエラー:', error);
             }
         }
         
-        function displayRestaurants(restaurants) {
+        function displayMyRestaurants(restaurants) {
+            // マイリストのマーカーを削除して再描画
             map.eachLayer((layer) => {
-                if (layer instanceof L.Marker && layer !== currentMarker) {
+                if (layer instanceof L.Marker && 
+                    layer !== currentMarker && 
+                    layer !== userLocationMarker &&
+                    layer.options.isMyRestaurant) {
                     map.removeLayer(layer);
                 }
             });
@@ -555,15 +751,23 @@
             const restaurantList = document.getElementById('restaurantList');
             restaurantList.innerHTML = '';
             
+            if (restaurants.length === 0) {
+                restaurantList.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">まだ登録がありません</p>';
+                return;
+            }
+            
             restaurants.forEach((data) => {
                 const icon = categoryIcons[data.category] || '🍴';
                 const customIcon = L.divIcon({
-                    html: `<div style="font-size: 24px;">${icon}</div>`,
+                    html: `<div style="font-size: 24px; filter: drop-shadow(0 0 3px rgba(255,107,107,0.8));">${icon}</div>`,
                     className: 'custom-marker',
                     iconSize: [30, 30]
                 });
                 
-                const marker = L.marker([data.latitude, data.longitude], { icon: customIcon })
+                const marker = L.marker([data.latitude, data.longitude], { 
+                    icon: customIcon,
+                    isMyRestaurant: true 
+                })
                     .addTo(map)
                     .bindPopup(`
                         <strong>${data.name}</strong><br>
@@ -594,24 +798,39 @@
         window.filterByCategory = function(category) {
             currentFilter = category;
             
-            document.querySelectorAll('.chip').forEach(chip => {
+            document.querySelectorAll('#search-tab .chip').forEach(chip => {
                 chip.classList.remove('active');
             });
-            document.querySelector(`[data-category="${category}"]`).classList.add('active');
+            document.querySelector(`#search-tab [data-category="${category}"]`).classList.add('active');
+            
+            const filtered = category === 'all' 
+                ? nearbyRestaurants 
+                : nearbyRestaurants.filter(r => r.category === category);
+            
+            displayNearbyRestaurants(filtered);
+        };
+        
+        window.filterMyList = function(category) {
+            myListFilter = category;
+            
+            document.querySelectorAll('#mylist-tab .chip').forEach(chip => {
+                chip.classList.remove('active');
+            });
+            document.querySelector(`#mylist-tab [data-category="${category}"]`).classList.add('active');
             
             const filtered = category === 'all' 
                 ? allRestaurants 
                 : allRestaurants.filter(r => r.category === category);
             
-            displayRestaurants(filtered);
+            displayMyRestaurants(filtered);
         };
         
-        window.searchRestaurants = function() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        window.searchMyRestaurants = function() {
+            const searchTerm = document.getElementById('myListSearch').value.toLowerCase();
             
-            let filtered = currentFilter === 'all' 
+            let filtered = myListFilter === 'all' 
                 ? allRestaurants 
-                : allRestaurants.filter(r => r.category === currentFilter);
+                : allRestaurants.filter(r => r.category === myListFilter);
             
             if (searchTerm) {
                 filtered = filtered.filter(r => 
@@ -620,19 +839,27 @@
                 );
             }
             
-            displayRestaurants(filtered);
+            displayMyRestaurants(filtered);
         };
         
         window.switchTab = function(tab) {
+            currentTab = tab;
+            
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             
-            if (tab === 'add') {
-                document.querySelector('.tab:first-child').classList.add('active');
-                document.getElementById('add-tab').classList.add('active');
-            } else {
-                document.querySelector('.tab:last-child').classList.add('active');
+            if (tab === 'search') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
                 document.getElementById('search-tab').classList.add('active');
+            } else if (tab === 'add') {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('add-tab').classList.add('active');
+            } else if (tab === 'mylist') {
+                document.querySelector('.tab:nth-child(3)').classList.add('active');
+                document.getElementById('mylist-tab').classList.add('active');
+                if (db) {
+                    loadRestaurants();
+                }
             }
         };
         
