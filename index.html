@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenStreetMap + Firebase</title>
+    <title>飲食店マップ - OpenStreetMap + Firebase</title>
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
@@ -23,7 +23,7 @@
         }
         
         header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
             color: white;
             padding: 1rem 2rem;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -46,11 +46,43 @@
         }
         
         .sidebar {
-            width: 320px;
+            width: 360px;
             background: #f8f9fa;
             padding: 1.5rem;
             overflow-y: auto;
             box-shadow: -2px 0 10px rgba(0,0,0,0.05);
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 0.75rem;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            color: white;
+            border-color: #ff6b6b;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
         }
         
         .form-group {
@@ -64,7 +96,7 @@
             color: #333;
         }
         
-        input, textarea {
+        input, textarea, select {
             width: 100%;
             padding: 0.75rem;
             border: 2px solid #e0e0e0;
@@ -73,9 +105,9 @@
             transition: border-color 0.3s;
         }
         
-        input:focus, textarea:focus {
+        input:focus, textarea:focus, select:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: #ff6b6b;
         }
         
         textarea {
@@ -83,10 +115,34 @@
             min-height: 80px;
         }
         
+        .rating-input {
+            display: flex;
+            gap: 0.5rem;
+            flex-direction: row-reverse;
+            justify-content: flex-end;
+        }
+        
+        .rating-input input {
+            display: none;
+        }
+        
+        .rating-input label {
+            cursor: pointer;
+            font-size: 1.5rem;
+            color: #ddd;
+            margin: 0;
+        }
+        
+        .rating-input input:checked ~ label,
+        .rating-input label:hover,
+        .rating-input label:hover ~ label {
+            color: #ffc107;
+        }
+        
         button {
             width: 100%;
             padding: 0.875rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
             color: white;
             border: none;
             border-radius: 8px;
@@ -98,11 +154,51 @@
         
         button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
         }
         
         button:active {
             transform: translateY(0);
+        }
+        
+        .search-box {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        
+        .search-box input {
+            padding-right: 2.5rem;
+        }
+        
+        .search-icon {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+        }
+        
+        .filter-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .chip {
+            padding: 0.5rem 1rem;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+        }
+        
+        .chip.active {
+            background: #ff6b6b;
+            color: white;
+            border-color: #ff6b6b;
         }
         
         .status {
@@ -125,80 +221,156 @@
             border: 1px solid #f5c6cb;
         }
         
-        .markers-list {
-            margin-top: 2rem;
+        .restaurant-list {
+            margin-top: 1rem;
         }
         
-        .markers-list h3 {
-            margin-bottom: 1rem;
-            color: #333;
-        }
-        
-        .marker-item {
+        .restaurant-item {
             background: white;
             padding: 1rem;
             margin-bottom: 0.75rem;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: transform 0.2s;
         }
         
-        .marker-item h4 {
-            color: #667eea;
+        .restaurant-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .restaurant-item h4 {
+            color: #ff6b6b;
             margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         
-        .marker-item p {
+        .category-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #495057;
+        }
+        
+        .restaurant-item p {
             color: #666;
             font-size: 0.85rem;
+            margin-bottom: 0.25rem;
         }
         
-        .config-note {
-            background: #fff3cd;
-            border: 1px solid #ffeeba;
-            color: #856404;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            font-size: 0.85rem;
+        .stars {
+            color: #ffc107;
+            font-size: 0.9rem;
+        }
+        
+        .price-range {
+            color: #28a745;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
     <header>
-        <h1>🗺️ OpenStreetMap + Firebase マップアプリ</h1>
+        <h1>🍽️ 飲食店マップ検索</h1>
     </header>
     
     <div class="container">
         <div id="map"></div>
         
         <div class="sidebar">
-            <div class="config-note">
-                <strong>⚠️ Firebase設定が必要です</strong><br>
-                script.jsのfirebaseConfig部分に、あなたのFirebaseプロジェクトの設定情報を入力してください。
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('add')">➕ 追加</div>
+                <div class="tab" onclick="switchTab('search')">🔍 検索</div>
             </div>
             
-            <div class="form-group">
-                <label for="markerName">マーカー名</label>
-                <input type="text" id="markerName" placeholder="例: 東京タワー">
+            <!-- 追加タブ -->
+            <div id="add-tab" class="tab-content active">
+                <div class="form-group">
+                    <label for="restaurantName">店名 *</label>
+                    <input type="text" id="restaurantName" placeholder="例: 〇〇ラーメン">
+                </div>
+                
+                <div class="form-group">
+                    <label for="category">カテゴリ *</label>
+                    <select id="category">
+                        <option value="">選択してください</option>
+                        <option value="ラーメン">🍜 ラーメン</option>
+                        <option value="カフェ">☕ カフェ</option>
+                        <option value="居酒屋">🍺 居酒屋</option>
+                        <option value="イタリアン">🍝 イタリアン</option>
+                        <option value="和食">🍱 和食</option>
+                        <option value="中華">🥟 中華</option>
+                        <option value="焼肉">🥩 焼肉</option>
+                        <option value="寿司">🍣 寿司</option>
+                        <option value="ファストフード">🍔 ファストフード</option>
+                        <option value="その他">🍴 その他</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>評価</label>
+                    <div class="rating-input">
+                        <input type="radio" name="rating" id="star5" value="5">
+                        <label for="star5">★</label>
+                        <input type="radio" name="rating" id="star4" value="4">
+                        <label for="star4">★</label>
+                        <input type="radio" name="rating" id="star3" value="3" checked>
+                        <label for="star3">★</label>
+                        <input type="radio" name="rating" id="star2" value="2">
+                        <label for="star2">★</label>
+                        <input type="radio" name="rating" id="star1" value="1">
+                        <label for="star1">★</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="priceRange">価格帯</label>
+                    <select id="priceRange">
+                        <option value="¥">¥ (〜1000円)</option>
+                        <option value="¥¥" selected>¥¥ (1000〜3000円)</option>
+                        <option value="¥¥¥">¥¥¥ (3000〜5000円)</option>
+                        <option value="¥¥¥¥">¥¥¥¥ (5000円〜)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">メモ・感想</label>
+                    <textarea id="description" placeholder="おすすめメニューや感想など..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>位置 (地図をクリック) *</label>
+                    <input type="text" id="coordinates" readonly placeholder="地図上をクリックして選択">
+                </div>
+                
+                <button onclick="saveRestaurant()">💾 保存する</button>
+                
+                <div id="status" class="status"></div>
             </div>
             
-            <div class="form-group">
-                <label for="markerDesc">説明</label>
-                <textarea id="markerDesc" placeholder="マーカーの説明を入力..."></textarea>
-            </div>
-            
-            <div class="form-group">
-                <label>座標 (マップをクリックして選択)</label>
-                <input type="text" id="coordinates" readonly placeholder="マップ上をクリック">
-            </div>
-            
-            <button onclick="saveMarker()">📍 マーカーを保存</button>
-            
-            <div id="status" class="status"></div>
-            
-            <div class="markers-list">
-                <h3>保存済みマーカー</h3>
-                <div id="markersList"></div>
+            <!-- 検索タブ -->
+            <div id="search-tab" class="tab-content">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="店名で検索..." onkeyup="searchRestaurants()">
+                    <span class="search-icon">🔍</span>
+                </div>
+                
+                <div class="filter-chips">
+                    <div class="chip active" data-category="all" onclick="filterByCategory('all')">すべて</div>
+                    <div class="chip" data-category="ラーメン" onclick="filterByCategory('ラーメン')">🍜</div>
+                    <div class="chip" data-category="カフェ" onclick="filterByCategory('カフェ')">☕</div>
+                    <div class="chip" data-category="居酒屋" onclick="filterByCategory('居酒屋')">🍺</div>
+                    <div class="chip" data-category="イタリアン" onclick="filterByCategory('イタリアン')">🍝</div>
+                    <div class="chip" data-category="和食" onclick="filterByCategory('和食')">🍱</div>
+                    <div class="chip" data-category="中華" onclick="filterByCategory('中華')">🥟</div>
+                </div>
+                
+                <div class="restaurant-list" id="restaurantList"></div>
             </div>
         </div>
     </div>
@@ -206,23 +378,21 @@
     <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     
-    <!-- Firebase JS (v9 modular) -->
+    <!-- Firebase JS -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, addDoc, getDocs, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         
-        // Firebase設定（ここに自分のFirebase設定を入力）
         const firebaseConfig = {
-  apiKey: "AIzaSyDJC_hutHxNT2lNXaCpMO-6qa_g4p_L-zM",
-  authDomain: "maptest-oicity.firebaseapp.com",
-  projectId: "maptest-oicity",
-  storageBucket: "maptest-oicity.firebasestorage.app",
-  messagingSenderId: "569568295701",
-  appId: "1:569568295701:web:ef0add8a0e610967b5071c",
-  measurementId: "G-V91V62Y7S1"
-};
+            apiKey: "AIzaSyDJC_hutHxNT2lNXaCpMO-6qa_g4p_L-zM",
+            authDomain: "maptest-oicity.firebaseapp.com",
+            projectId: "maptest-oicity",
+            storageBucket: "maptest-oicity.firebasestorage.app",
+            messagingSenderId: "569568295701",
+            appId: "1:569568295701:web:ef0add8a0e610967b5071c",
+            measurementId: "G-V91V62Y7S1"
+        };
         
-        // Firebase初期化
         let app, db;
         try {
             app = initializeApp(firebaseConfig);
@@ -232,7 +402,6 @@
             console.error("Firebase初期化エラー:", error);
         }
         
-        // マップ初期化
         const map = L.map('map').setView([35.6762, 139.6503], 13);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -243,8 +412,23 @@
         let currentMarker = null;
         let selectedLat = null;
         let selectedLng = null;
+        let allRestaurants = [];
+        let currentFilter = 'all';
         
-        // マップクリックイベント
+        // カテゴリ別のマーカーアイコン
+        const categoryIcons = {
+            'ラーメン': '🍜',
+            'カフェ': '☕',
+            '居酒屋': '🍺',
+            'イタリアン': '🍝',
+            '和食': '🍱',
+            '中華': '🥟',
+            '焼肉': '🥩',
+            '寿司': '🍣',
+            'ファストフード': '🍔',
+            'その他': '🍴'
+        };
+        
         map.on('click', function(e) {
             selectedLat = e.latlng.lat;
             selectedLng = e.latlng.lng;
@@ -259,14 +443,15 @@
             currentMarker = L.marker([selectedLat, selectedLng]).addTo(map);
         });
         
-        // マーカー保存
-        window.saveMarker = async function() {
-            const name = document.getElementById('markerName').value;
-            const description = document.getElementById('markerDesc').value;
-            const status = document.getElementById('status');
+        window.saveRestaurant = async function() {
+            const name = document.getElementById('restaurantName').value;
+            const category = document.getElementById('category').value;
+            const rating = document.querySelector('input[name="rating"]:checked').value;
+            const priceRange = document.getElementById('priceRange').value;
+            const description = document.getElementById('description').value;
             
-            if (!name || !selectedLat || !selectedLng) {
-                showStatus('マーカー名と座標を入力してください', 'error');
+            if (!name || !category || !selectedLat || !selectedLng) {
+                showStatus('必須項目を入力してください', 'error');
                 return;
             }
             
@@ -276,61 +461,144 @@
             }
             
             try {
-                await addDoc(collection(db, 'markers'), {
+                await addDoc(collection(db, 'restaurants'), {
                     name: name,
+                    category: category,
+                    rating: parseInt(rating),
+                    priceRange: priceRange,
                     description: description,
                     latitude: selectedLat,
                     longitude: selectedLng,
                     timestamp: new Date().toISOString()
                 });
                 
-                showStatus('マーカーを保存しました！', 'success');
-                document.getElementById('markerName').value = '';
-                document.getElementById('markerDesc').value = '';
+                showStatus('飲食店を登録しました！', 'success');
+                document.getElementById('restaurantName').value = '';
+                document.getElementById('description').value = '';
+                document.getElementById('coordinates').value = '';
+                selectedLat = null;
+                selectedLng = null;
                 
-                loadMarkers();
+                if (currentMarker) {
+                    map.removeLayer(currentMarker);
+                    currentMarker = null;
+                }
+                
+                loadRestaurants();
             } catch (error) {
                 showStatus('保存エラー: ' + error.message, 'error');
             }
         };
         
-        // マーカー読み込み
-        async function loadMarkers() {
+        async function loadRestaurants() {
             if (!db) return;
             
             try {
-                const q = query(collection(db, 'markers'), orderBy('timestamp', 'desc'));
+                const q = query(collection(db, 'restaurants'), orderBy('timestamp', 'desc'));
                 const querySnapshot = await getDocs(q);
-                const markersList = document.getElementById('markersList');
-                markersList.innerHTML = '';
+                allRestaurants = [];
                 
                 querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    
-                    // マップにマーカー追加
-                    const marker = L.marker([data.latitude, data.longitude])
-                        .addTo(map)
-                        .bindPopup(`<strong>${data.name}</strong><br>${data.description || ''}`);
-                    
-                    // サイドバーにリスト追加
-                    const item = document.createElement('div');
-                    item.className = 'marker-item';
-                    item.innerHTML = `
-                        <h4>${data.name}</h4>
-                        <p>${data.description || '説明なし'}</p>
-                    `;
-                    item.onclick = () => {
-                        map.setView([data.latitude, data.longitude], 15);
-                        marker.openPopup();
-                    };
-                    markersList.appendChild(item);
+                    allRestaurants.push({ id: doc.id, ...doc.data() });
                 });
+                
+                displayRestaurants(allRestaurants);
             } catch (error) {
-                console.error('マーカー読み込みエラー:', error);
+                console.error('読み込みエラー:', error);
             }
         }
         
-        // ステータス表示
+        function displayRestaurants(restaurants) {
+            map.eachLayer((layer) => {
+                if (layer instanceof L.Marker && layer !== currentMarker) {
+                    map.removeLayer(layer);
+                }
+            });
+            
+            const restaurantList = document.getElementById('restaurantList');
+            restaurantList.innerHTML = '';
+            
+            restaurants.forEach((data) => {
+                const icon = categoryIcons[data.category] || '🍴';
+                const customIcon = L.divIcon({
+                    html: `<div style="font-size: 24px;">${icon}</div>`,
+                    className: 'custom-marker',
+                    iconSize: [30, 30]
+                });
+                
+                const marker = L.marker([data.latitude, data.longitude], { icon: customIcon })
+                    .addTo(map)
+                    .bindPopup(`
+                        <strong>${data.name}</strong><br>
+                        ${data.category} ${data.priceRange}<br>
+                        ${'★'.repeat(data.rating)}${'☆'.repeat(5-data.rating)}<br>
+                        ${data.description || ''}
+                    `);
+                
+                const item = document.createElement('div');
+                item.className = 'restaurant-item';
+                item.innerHTML = `
+                    <h4>
+                        ${icon} ${data.name}
+                        <span class="category-badge">${data.category}</span>
+                    </h4>
+                    <p class="stars">${'★'.repeat(data.rating)}${'☆'.repeat(5-data.rating)}</p>
+                    <p class="price-range">${data.priceRange}</p>
+                    <p>${data.description || '説明なし'}</p>
+                `;
+                item.onclick = () => {
+                    map.setView([data.latitude, data.longitude], 16);
+                    marker.openPopup();
+                };
+                restaurantList.appendChild(item);
+            });
+        }
+        
+        window.filterByCategory = function(category) {
+            currentFilter = category;
+            
+            document.querySelectorAll('.chip').forEach(chip => {
+                chip.classList.remove('active');
+            });
+            document.querySelector(`[data-category="${category}"]`).classList.add('active');
+            
+            const filtered = category === 'all' 
+                ? allRestaurants 
+                : allRestaurants.filter(r => r.category === category);
+            
+            displayRestaurants(filtered);
+        };
+        
+        window.searchRestaurants = function() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            
+            let filtered = currentFilter === 'all' 
+                ? allRestaurants 
+                : allRestaurants.filter(r => r.category === currentFilter);
+            
+            if (searchTerm) {
+                filtered = filtered.filter(r => 
+                    r.name.toLowerCase().includes(searchTerm) ||
+                    (r.description && r.description.toLowerCase().includes(searchTerm))
+                );
+            }
+            
+            displayRestaurants(filtered);
+        };
+        
+        window.switchTab = function(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'add') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                document.getElementById('add-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                document.getElementById('search-tab').classList.add('active');
+            }
+        };
+        
         function showStatus(message, type) {
             const status = document.getElementById('status');
             status.textContent = message;
@@ -342,9 +610,8 @@
             }, 3000);
         }
         
-        // 初期読み込み
         if (db) {
-            loadMarkers();
+            loadRestaurants();
         }
     </script>
 </body>
