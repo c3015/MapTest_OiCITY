@@ -20,6 +20,9 @@
         window.userId = null;
         window.allRestaurants = []; 
         window.isFirebaseReady = false; // Firebaseの準備状態
+        
+        // 🚨 修正: アプリIDをグローバルに設定
+        window.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         // Firebase初期化と認証処理
         const initFirebase = async () => {
@@ -30,7 +33,6 @@
                 }
                 
                 if (!firebaseConfig || !firebaseConfig.projectId) {
-                    // Firebase初期化エラーが発生した場合のフラグ設定
                     console.warn("Firebase初期化失敗: projectIdが見つかりません。マイリスト機能は利用できません。");
                     document.getElementById('firebase-status').textContent = '⚠️ マイリスト機能は利用できません (DB未設定)';
                     return; 
@@ -52,10 +54,12 @@
                     if (user) {
                         window.userId = user.uid;
                     } else {
-                        window.userId = crypto.randomUUID();
+                        // 認証されていない場合はランダムIDを使用
+                        window.userId = sessionStorage.getItem('anonUserId') || crypto.randomUUID();
+                        sessionStorage.setItem('anonUserId', window.userId); 
                     }
                     window.isFirebaseReady = true;
-                    document.getElementById('firebase-status').textContent = '✅ マイリスト機能利用可能';
+                    document.getElementById('firebase-status').textContent = `✅ マイリスト機能利用可能 (UserID: ${window.userId.substring(0, 8)}...)`;
                     if (window.currentTab === 'mylist') {
                         window.fetchRestaurants();
                     }
@@ -257,6 +261,17 @@
             font-size: 1rem;
             margin-bottom: 0.5rem;
             line-height: 1.4;
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 10;
         }
 
     </style>
@@ -494,14 +509,10 @@
             );
         }
 
-        // 検索機能の修正: Overpass APIの負荷を軽減し、JS側でフィルタリングを実行
         window.searchNearby = async function() {
-            // searchTermはJS側でフィルタリングに利用
             const bounds = map.getBounds();
             const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
             
-            // クエリを極限までシンプル化: BBOX内の飲食店アメニティのみを抽出
-            // これにより、前回のタイムアウトエラーを防ぎます。
             const query = `
                 [out:json][timeout:25];
                 (
@@ -533,7 +544,7 @@
                 const data = await response.json();
                 
                 const restaurants = data.elements
-                    .filter(el => el.tags && el.tags.name) // nameタグを持つもののみ
+                    .filter(el => el.tags && el.tags.name) 
                     .map(el => ({
                         name: el.tags.name,
                         category: el.tags.amenity || el.tags.cuisine || '飲食店', 
@@ -555,7 +566,6 @@
             }
         }
 
-        // 検索結果をリストとマップに表示 (JavaScriptでのフィルタリング機能を追加)
         function displayNearbyRestaurants(restaurants) {
             map.eachLayer((layer) => {
                 if (layer instanceof L.Marker && 
@@ -571,11 +581,9 @@
 
             const searchTerm = document.getElementById('searchTerm').value.trim().toLowerCase();
             
-            // 取得した全データに対し、JavaScriptで検索語句フィルタリングを行う
             let filteredRestaurants = restaurants;
             if (searchTerm && searchTerm !== 'restaurant') {
                 filteredRestaurants = restaurants.filter(data => 
-                    // 店名、料理ジャンル、カテゴリのいずれかに検索語句が含まれていればOK
                     data.name.toLowerCase().includes(searchTerm) ||
                     (data.cuisine && data.cuisine.toLowerCase().includes(searchTerm)) ||
                     (data.category && data.category.toLowerCase().includes(searchTerm))
@@ -625,8 +633,7 @@
             });
         }
         
-        // --- Gemini APIによる外部情報取得機能 (変更なし) ---
-
+        // 🚨 修正: Gemini APIのエラーハンドリングを強化
         async function fetchGeminiDetails(restaurantName) {
             const geminiInfoDiv = document.getElementById('detail-gemini-info');
             geminiInfoDiv.innerHTML = '<div class="detail-section"><p class="status success" style="background-color: #e9f5ff; color: #007bff; margin-bottom: 0;">✨ 外部Web情報検索中...</p></div>';
@@ -662,8 +669,23 @@
                     body: JSON.stringify(payload)
                 });
 
-                if (!response.ok) throw new Error(`API Request Failed with status ${response.status}`);
-
+                if (!response.ok) {
+                    const status = response.status;
+                    let errorMessage = `API Request Failed with status ${status}`;
+                    
+                    // 403 Forbiddenの場合に詳細なメッセージを提供
+                    if (status === 403) {
+                         errorMessage = "403 Forbidden: APIキーの権限不足、またはGemini APIが有効になっていない可能性があります。";
+                    } else if (status === 400) {
+                        errorMessage = "400 Bad Request: APIリクエストの形式に誤りがあります。";
+                    }
+                    
+                    const errorText = await response.text();
+                    console.error("Gemini API詳細エラーレスポンス:", errorText);
+                    
+                    throw new Error(errorMessage);
+                }
+                
                 const result = await response.json();
                 
                 const candidate = result.candidates?.[0];
@@ -686,7 +708,8 @@
 
             } catch (e) {
                 console.error("Gemini APIエラー:", e);
-                geminiInfoDiv.innerHTML = '<div class="detail-section"><p class="status error">外部情報検索中にエラーが発生しました。</p></div>';
+                // 画面にエラーメッセージを表示
+                geminiInfoDiv.innerHTML = `<div class="detail-section"><p class="status error">外部情報検索中にエラーが発生しました。<br> (${e.message})</p></div>`;
             }
         }
 
@@ -712,7 +735,7 @@
             // OSM Webサイト
             if (restaurantData.website) {
                 websiteLinkEl.href = (restaurantData.website.startsWith('http')) ? restaurantData.website : `http://${restaurantData.website}`;
-                websiteLinkEl.textContent = websiteLinkel.href.replace(/https?:\/\//, '').split('/')[0];
+                websiteLinkEl.textContent = websiteLinkEl.href.replace(/https?:\/\//, '').split('/')[0];
                 websiteContainerEl.style.display = 'block';
             } else {
                 websiteContainerEl.style.display = 'none';
@@ -746,17 +769,16 @@
             document.getElementById('restaurant-detail-overlay').classList.remove('open');
         };
 
-        // --- Firebase/マイリスト関連関数 (変更なし) ---
-
+        // 🚨 修正: FirestoreデータパスにappIdとuserIdを使用
         window.saveRestaurant = async function() {
-            if (!window.isFirebaseReady || !db) {
+            if (!window.isFirebaseReady || !db || !window.userId) {
                 const statusDiv = document.getElementById('status');
-                statusDiv.textContent = 'エラー: Firebaseデータベースが利用できません。';
+                statusDiv.textContent = 'エラー: Firebaseデータベースまたはユーザー認証が完了していません。';
                 statusDiv.className = 'status error';
                 statusDiv.style.display = 'block';
                 return;
             }
-            // (以下、保存ロジックは変更なし)
+            
             const name = document.getElementById('restaurantName').value;
             const category = document.getElementById('category').value;
             const ratingEl = document.querySelector('input[name="rating"]:checked');
@@ -787,7 +809,9 @@
             };
 
             try {
-                await addDoc(collection(db, "restaurants"), newRestaurant);
+                // 🚨 修正: セキュリティルールに準拠したコレクションパスを使用
+                const restaurantsColRef = collection(db, `artifacts/${window.appId}/users/${window.userId}/restaurants`);
+                await addDoc(restaurantsColRef, newRestaurant);
                 
                 statusDiv.textContent = '保存に成功しました！';
                 statusDiv.className = 'status success';
@@ -806,23 +830,26 @@
 
             } catch (e) {
                 console.error("Firebaseへの書き込みエラー:", e);
-                statusDiv.textContent = '保存に失敗しました。コンソールを確認してください。';
+                statusDiv.textContent = `保存に失敗しました。エラー: ${e.message}`;
                 statusDiv.className = 'status error';
                 statusDiv.style.display = 'block';
             }
         };
 
+        // 🚨 修正: FirestoreデータパスにappIdとuserIdを使用
         window.fetchRestaurants = async function() {
             const listDiv = document.getElementById('restaurantList');
-            if (!window.isFirebaseReady || !db) {
+            if (!window.isFirebaseReady || !db || !window.userId) {
                  listDiv.innerHTML = '<p class="status error">Firebaseデータベースが利用できないため、マイリストはロードできません。</p>';
                  return;
             }
-            // (以下、データ取得ロジックは変更なし)
+            
             listDiv.innerHTML = '<p style="text-align: center; color: #007bff; padding: 2rem;">マイリストを読み込み中...</p>';
 
             try {
-                const q = query(collection(db, "restaurants"), orderBy("createdAt", "desc"));
+                // 🚨 修正: セキュリティルールに準拠したコレクションパスを使用
+                const restaurantsColRef = collection(db, `artifacts/${window.appId}/users/${window.userId}/restaurants`);
+                const q = query(restaurantsColRef, orderBy("createdAt", "desc"));
                 const querySnapshot = await getDocs(q);
                 window.allRestaurants = [];
                 querySnapshot.forEach((doc) => {
@@ -831,7 +858,7 @@
                 displayMyRestaurants(window.allRestaurants);
             } catch (error) {
                 console.error("Firebaseからのデータ取得エラー:", error);
-                listDiv.innerHTML = '<p class="status error">リストの読み込みに失敗しました。</p>';
+                listDiv.innerHTML = `<p class="status error">リストの読み込みに失敗しました。エラー: ${error.message}</p>`;
             }
         };
 
@@ -907,7 +934,7 @@
             window.currentTab = tabName;
             
             if (tabName === 'mylist') {
-                if (window.db) {
+                if (window.db && window.userId) {
                     fetchRestaurants();
                 } else {
                     document.getElementById('restaurantList').innerHTML = '<p class="status error">Firebaseデータベースが利用できないため、マイリストはロードできません。</p>';
