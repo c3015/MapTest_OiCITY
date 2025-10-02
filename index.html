@@ -7,6 +7,9 @@
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <!-- Leaflet MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
     
     <style>
         * {
@@ -430,6 +433,87 @@
             color: #28a745;
             font-weight: 600;
         }
+        
+        .map-controls {
+            position: absolute;
+            top: 80px;
+            right: 10px;
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .control-btn {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 10px 15px;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            font-weight: 600;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .control-btn:hover {
+            background: #f8f9fa;
+            transform: translateX(-3px);
+        }
+        
+        .control-btn.active {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            color: white;
+            border-color: #ff6b6b;
+        }
+        
+        .control-btn .icon {
+            font-size: 1.2rem;
+        }
+        
+        /* マーカークラスターのカスタムスタイル */
+        .marker-cluster-small {
+            background-color: rgba(110, 204, 57, 0.6);
+        }
+        .marker-cluster-small div {
+            background-color: rgba(110, 204, 57, 0.8);
+            color: white;
+            font-weight: bold;
+        }
+        
+        .marker-cluster-medium {
+            background-color: rgba(240, 194, 12, 0.6);
+        }
+        .marker-cluster-medium div {
+            background-color: rgba(240, 194, 12, 0.8);
+            color: white;
+            font-weight: bold;
+        }
+        
+        .marker-cluster-large {
+            background-color: rgba(241, 128, 23, 0.6);
+        }
+        .marker-cluster-large div {
+            background-color: rgba(241, 128, 23, 0.8);
+            color: white;
+            font-weight: bold;
+        }
+        
+        .marker-cluster {
+            border-radius: 50%;
+        }
+        
+        .marker-cluster div {
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -527,6 +611,18 @@
     
     <div class="container">
         <div id="map"></div>
+        
+        <!-- 地図コントロールボタン -->
+        <div class="map-controls">
+            <button class="control-btn active" id="clusterBtn" onclick="toggleCluster()">
+                <span class="icon">📍</span>
+                <span>クラスター</span>
+            </button>
+            <button class="control-btn" id="heatmapBtn" onclick="toggleHeatmap()">
+                <span class="icon">🔥</span>
+                <span>ヒートマップ</span>
+            </button>
+        </div>
         
         <div class="sidebar">
             <div class="tabs">
@@ -668,6 +764,10 @@
     
     <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <!-- Leaflet MarkerCluster JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+    <!-- Leaflet Heat JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
     
     <!-- Firebase JS -->
     <script type="module">
@@ -700,6 +800,29 @@
             maxZoom: 19
         }).addTo(map);
         
+        // マーカークラスターグループを初期化
+        markerClusterGroup = L.markerClusterGroup({
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            iconCreateFunction: function(cluster) {
+                const count = cluster.getChildCount();
+                let size = 'small';
+                if (count >= 50) {
+                    size = 'large';
+                } else if (count >= 20) {
+                    size = 'medium';
+                }
+                return L.divIcon({
+                    html: '<div><span>' + count + '</span></div>',
+                    className: 'marker-cluster marker-cluster-' + size,
+                    iconSize: L.point(40, 40)
+                });
+            }
+        });
+        map.addLayer(markerClusterGroup);
+        
         let currentMarker = null;
         let selectedLat = null;
         let selectedLng = null;
@@ -709,6 +832,11 @@
         let nearbyRestaurants = [];
         let currentTab = 'search';
         let myListFilter = 'all';
+        let markerClusterGroup = null;
+        let heatmapLayer = null;
+        let isClusterEnabled = true;
+        let isHeatmapEnabled = false;
+        let allMarkers = [];
         
         // 現在地を取得してマップを移動
         if (navigator.geolocation) {
@@ -840,15 +968,8 @@
         };
         
         function displayNearbyRestaurants(restaurants) {
-            // 既存の検索結果マーカーを削除
-            map.eachLayer((layer) => {
-                if (layer instanceof L.Marker && 
-                    layer !== currentMarker && 
-                    layer !== userLocationMarker &&
-                    !layer.options.isMyRestaurant) {
-                    map.removeLayer(layer);
-                }
-            });
+            // 既存のマーカーとヒートマップをクリア
+            clearAllMarkers();
             
             const nearbyList = document.getElementById('nearbyList');
             nearbyList.innerHTML = '';
@@ -857,6 +978,8 @@
                 nearbyList.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">検索結果がありません</p>';
                 return;
             }
+            
+            const heatmapData = [];
             
             restaurants.forEach((data) => {
                 const icon = categoryIcons[data.category] || '🍴';
@@ -867,7 +990,6 @@
                 });
                 
                 const marker = L.marker([data.latitude, data.longitude], { icon: customIcon })
-                    .addTo(map)
                     .bindPopup(`
                         <strong>${data.name}</strong><br>
                         ${data.cuisine ? `料理: ${data.cuisine}<br>` : ''}
@@ -876,6 +998,9 @@
                         ${data.opening_hours ? `営業時間: ${data.opening_hours}<br>` : ''}
                         <small>出典: OpenStreetMap</small>
                     `);
+                
+                allMarkers.push(marker);
+                heatmapData.push([data.latitude, data.longitude, 0.5]);
                 
                 const categoryName = {
                     'restaurant': 'レストラン',
@@ -902,6 +1027,37 @@
                 };
                 nearbyList.appendChild(item);
             });
+            
+            // クラスターまたは通常表示
+            if (isClusterEnabled) {
+                markerClusterGroup.clearLayers();
+                markerClusterGroup.addLayers(allMarkers);
+            } else {
+                allMarkers.forEach(marker => marker.addTo(map));
+            }
+            
+            // ヒートマップレイヤーを更新
+            if (heatmapLayer) {
+                map.removeLayer(heatmapLayer);
+            }
+            heatmapLayer = L.heatLayer(heatmapData, {
+                radius: 25,
+                blur: 35,
+                maxZoom: 17,
+                max: 1.0,
+                gradient: {
+                    0.0: 'blue',
+                    0.3: 'cyan',
+                    0.5: 'lime',
+                    0.7: 'yellow',
+                    0.9: 'orange',
+                    1.0: 'red'
+                }
+            });
+            
+            if (isHeatmapEnabled) {
+                map.addLayer(heatmapLayer);
+            }
         }
         
         window.filterDisplayedRestaurants = function() {
@@ -1003,15 +1159,8 @@
         }
         
         function displayMyRestaurants(restaurants) {
-            // マイリストのマーカーを削除して再描画
-            map.eachLayer((layer) => {
-                if (layer instanceof L.Marker && 
-                    layer !== currentMarker && 
-                    layer !== userLocationMarker &&
-                    layer.options.isMyRestaurant) {
-                    map.removeLayer(layer);
-                }
-            });
+            // マイリストのマーカーをクリア
+            clearAllMarkers();
             
             const restaurantList = document.getElementById('restaurantList');
             restaurantList.innerHTML = '';
@@ -1020,6 +1169,8 @@
                 restaurantList.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">まだ登録がありません</p>';
                 return;
             }
+            
+            const heatmapData = [];
             
             restaurants.forEach((data) => {
                 const icon = categoryIcons[data.category] || '🍴';
@@ -1033,13 +1184,15 @@
                     icon: customIcon,
                     isMyRestaurant: true 
                 })
-                    .addTo(map)
                     .bindPopup(`
                         <strong>${data.name}</strong><br>
                         ${data.category} ${data.priceRange}<br>
                         ${'★'.repeat(data.rating)}${'☆'.repeat(5-data.rating)}<br>
                         ${data.description || ''}
                     `);
+                
+                allMarkers.push(marker);
+                heatmapData.push([data.latitude, data.longitude, 0.5]);
                 
                 const item = document.createElement('div');
                 item.className = 'restaurant-item';
@@ -1058,7 +1211,95 @@
                 };
                 restaurantList.appendChild(item);
             });
+            
+            // クラスターまたは通常表示
+            if (isClusterEnabled) {
+                markerClusterGroup.clearLayers();
+                markerClusterGroup.addLayers(allMarkers);
+            } else {
+                allMarkers.forEach(marker => marker.addTo(map));
+            }
+            
+            // ヒートマップレイヤーを更新
+            if (heatmapLayer) {
+                map.removeLayer(heatmapLayer);
+            }
+            heatmapLayer = L.heatLayer(heatmapData, {
+                radius: 25,
+                blur: 35,
+                maxZoom: 17,
+                max: 1.0,
+                gradient: {
+                    0.0: 'blue',
+                    0.3: 'cyan',
+                    0.5: 'lime',
+                    0.7: 'yellow',
+                    0.9: 'orange',
+                    1.0: 'red'
+                }
+            });
+            
+            if (isHeatmapEnabled) {
+                map.addLayer(heatmapLayer);
+            }
         }
+        
+        function clearAllMarkers() {
+            // クラスターをクリア
+            markerClusterGroup.clearLayers();
+            
+            // 通常マーカーをクリア
+            allMarkers.forEach(marker => {
+                if (map.hasLayer(marker)) {
+                    map.removeLayer(marker);
+                }
+            });
+            allMarkers = [];
+            
+            // ヒートマップをクリア
+            if (heatmapLayer && map.hasLayer(heatmapLayer)) {
+                map.removeLayer(heatmapLayer);
+            }
+        }
+        
+        window.toggleCluster = function() {
+            isClusterEnabled = !isClusterEnabled;
+            const btn = document.getElementById('clusterBtn');
+            
+            if (isClusterEnabled) {
+                btn.classList.add('active');
+                // 既存マーカーをクラスターに移動
+                allMarkers.forEach(marker => {
+                    if (map.hasLayer(marker)) {
+                        map.removeLayer(marker);
+                    }
+                });
+                markerClusterGroup.clearLayers();
+                markerClusterGroup.addLayers(allMarkers);
+            } else {
+                btn.classList.remove('active');
+                // クラスターから通常表示に
+                markerClusterGroup.clearLayers();
+                allMarkers.forEach(marker => marker.addTo(map));
+            }
+        };
+        
+        window.toggleHeatmap = function() {
+            isHeatmapEnabled = !isHeatmapEnabled;
+            const btn = document.getElementById('heatmapBtn');
+            
+            if (isHeatmapEnabled) {
+                btn.classList.add('active');
+                if (heatmapLayer) {
+                    map.addLayer(heatmapLayer);
+                }
+            } else {
+                btn.classList.remove('active');
+                if (heatmapLayer && map.hasLayer(heatmapLayer)) {
+                    map.removeLayer(heatmapLayer);
+                }
+            }
+        };
         
         window.filterByCategory = function(category) {
             currentFilter = category;
