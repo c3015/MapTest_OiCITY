@@ -793,35 +793,10 @@
             console.error("Firebase初期化エラー:", error);
         }
         
-        const map = L.map('map').setView([35.6762, 139.6503], 13);
+        // マップ初期化を実行
+        initializeMap();
         
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
-        }).addTo(map);
-        
-        // マーカークラスターグループを初期化
-        markerClusterGroup = L.markerClusterGroup({
-            maxClusterRadius: 50,
-            spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false,
-            zoomToBoundsOnClick: true,
-            iconCreateFunction: function(cluster) {
-                const count = cluster.getChildCount();
-                let size = 'small';
-                if (count >= 50) {
-                    size = 'large';
-                } else if (count >= 20) {
-                    size = 'medium';
-                }
-                return L.divIcon({
-                    html: '<div><span>' + count + '</span></div>',
-                    className: 'marker-cluster marker-cluster-' + size,
-                    iconSize: L.point(40, 40)
-                });
-            }
-        });
-        map.addLayer(markerClusterGroup);
+        // カテゴリ別のマーカーアイコン
         
         let currentMarker = null;
         let selectedLat = null;
@@ -838,42 +813,77 @@
         let isHeatmapEnabled = false;
         let allMarkers = [];
         
-        // 現在地を取得してマップを移動
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    
-                    // マップを現在地に移動
-                    map.setView([lat, lng], 15);
-                    
-                    // 現在地マーカーを追加
-                    const userIcon = L.divIcon({
-                        html: '<div style="font-size: 30px; text-align: center;">📍</div>',
-                        className: 'user-location-marker',
-                        iconSize: [30, 30]
+        // マップ初期化
+        const map = L.map('map').setView([35.6762, 139.6503], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // 現在地取得と初期化を分離
+        function initializeMap() {
+            // マーカークラスターグループを初期化
+            markerClusterGroup = L.markerClusterGroup({
+                maxClusterRadius: 50,
+                spiderfyOnMaxZoom: true,
+                showCoverageOnHover: false,
+                zoomToBoundsOnClick: true,
+                iconCreateFunction: function(cluster) {
+                    const count = cluster.getChildCount();
+                    let size = 'small';
+                    if (count >= 50) {
+                        size = 'large';
+                    } else if (count >= 20) {
+                        size = 'medium';
+                    }
+                    return L.divIcon({
+                        html: '<div><span>' + count + '</span></div>',
+                        className: 'marker-cluster marker-cluster-' + size,
+                        iconSize: L.point(40, 40)
                     });
-                    
-                    userLocationMarker = L.marker([lat, lng], { icon: userIcon })
-                        .addTo(map)
-                        .bindPopup('📍 現在地');
-                    
-                    console.log(`現在地取得成功: ${lat}, ${lng}`);
-                },
-                (error) => {
-                    console.error('現在地取得エラー:', error.message);
-                    // エラー時は東京駅をデフォルト表示
-                    map.setView([35.6812, 139.7671], 13);
                 }
-            );
-        } else {
-            console.log('Geolocation APIに対応していません');
-            // 対応していない場合は東京駅をデフォルト表示
-            map.setView([35.6812, 139.7671], 13);
+            });
+            map.addLayer(markerClusterGroup);
+            
+            // 現在地を取得してマップを移動
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        
+                        // マップを現在地に移動
+                        map.setView([lat, lng], 15);
+                        
+                        // 現在地マーカーを追加
+                        const userIcon = L.divIcon({
+                            html: '<div style="font-size: 30px; text-align: center;">📍</div>',
+                            className: 'user-location-marker',
+                            iconSize: [30, 30]
+                        });
+                        
+                        userLocationMarker = L.marker([lat, lng], { icon: userIcon })
+                            .addTo(map)
+                            .bindPopup('📍 現在地');
+                        
+                        console.log(`現在地取得成功: ${lat}, ${lng}`);
+                    },
+                    (error) => {
+                        console.error('現在地取得エラー:', error.message);
+                        // エラー時は東京駅をデフォルト表示
+                        map.setView([35.6812, 139.7671], 13);
+                    }
+                );
+            } else {
+                console.log('Geolocation APIに対応していません');
+                // 対応していない場合は東京駅をデフォルト表示
+                map.setView([35.6812, 139.7671], 13);
+            }
         }
         
-        // カテゴリ別のマーカーアイコン
+        // マップ初期化を実行
+        initializeMap();
         const categoryIcons = {
             'ラーメン': '🍜',
             'カフェ': '☕',
