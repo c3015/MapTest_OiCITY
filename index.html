@@ -8,7 +8,10 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, addDoc, getDocs, collection, query, orderBy, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firestoreのデバッグログを有効化 (エラー確認のため)
+        setLogLevel('debug');
 
         // グローバル変数として定義
         let app;
@@ -19,10 +22,17 @@
 
         // Firebase初期化と認証処理
         const initFirebase = async () => {
+            let firebaseConfig = null;
             try {
-                const firebaseConfig = typeof __firebase_config !== 'undefined' 
-                    ? JSON.parse(__firebase_config) 
-                    : {};
+                // Firebase Configの安全な読み込み
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    firebaseConfig = JSON.parse(__firebase_config);
+                }
+                
+                if (!firebaseConfig || !firebaseConfig.projectId) {
+                    console.error("Firebase初期化失敗: projectIdが見つかりません。環境変数が設定されているか確認してください。");
+                    return; 
+                }
                 
                 app = initializeApp(firebaseConfig);
                 window.db = getFirestore(app);
@@ -52,7 +62,7 @@
 
             } catch (e) {
                 console.error("Firebase初期化エラー:", e);
-                // データベースが利用できない場合でもアプリ自体は動作するようにします
+                // エラーが発生した場合でも、マップやOSM検索は動作するようにします。
             }
         };
 
@@ -319,7 +329,7 @@
             transform: translateY(2px);
         }
 
-        /* --- 飲食店詳細オーバーレイのスタイル (追加分) --- */
+        /* --- 飲食店詳細オーバーレイのスタイル --- */
         .detail-overlay {
             position: fixed;
             top: 0;
@@ -472,7 +482,6 @@
             color: #666;
             font-style: italic;
         }
-        /* End of Detail Overlay Styles */
     </style>
 </head>
 <body>
@@ -543,7 +552,6 @@
                     <div class="chip" data-category="Restaurant" onclick="filterMyList('Restaurant')">レストラン</div>
                     <div class="chip" data-category="Cafe" onclick="filterMyList('Cafe')">カフェ</div>
                     <div class="chip" data-category="Bar" onclick="filterMyList('Bar')">バー</div>
-                    <!-- 他のカテゴリも必要に応じて追加 -->
                 </div>
                 <input type="text" id="myListSearch" oninput="searchMyRestaurants()" placeholder="マイリストを検索...">
                 <div id="restaurantList">
@@ -714,21 +722,30 @@
 
         // 周辺の飲食店を検索 (Overpass API)
         window.searchNearby = async function() {
-            const searchTerm = document.getElementById('searchTerm').value || 'restaurant';
-            const center = map.getCenter();
+            // 検索キーワードを取得し、URLエンコードに影響が出ないように不要なスペースを削除
+            const searchTerm = document.getElementById('searchTerm').value.trim(); 
             const bounds = map.getBounds();
             const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
             
-            // Overpass QLクエリを構築
-            // 検索キーワードとカテゴリを柔軟に結合
-            const queryCategory = searchTerm.toLowerCase().split(' ').map(s => `nwr[cuisine~"${s}",i][amenity~"restaurant|cafe|fast_food|bar|pub",i](poly:"${bbox}")`).join(';');
-            const queryAmenity = `nwr[amenity~"${searchTerm}|restaurant|cafe|fast_food|bar|pub",i](poly:"${bbox}");`;
+            // 修正されたOverpass QLクエリを構築
+            // 'nwr'でノード、ウェイ、リレーションを検索し、 amenity=restaurant|cafe|... のいずれかを持つものを抽出
+            // 検索キーワードがある場合は、nameタグに部分一致検索([name~".*キーワード.*",i])を適用
+            
+            let nameQuery = '';
+            if (searchTerm && searchTerm.toLowerCase() !== 'restaurant') {
+                 // 検索語句を正規表現でエスケープし、nameタグに部分一致検索を適用
+                 const escapedSearchTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                 nameQuery = `nwr["name"~".*${escapedSearchTerm}.*",i](${bbox});\n`;
+            }
 
             const query = `
                 [out:json][timeout:25];
                 (
-                    ${queryCategory}
-                    ${queryAmenity}
+                    // 1. 主要な飲食店のカテゴリを検索 (検索語句がない場合はこちらがメイン)
+                    nwr[amenity~"restaurant|cafe|fast_food|bar|pub|food_court",i](${bbox});
+                    
+                    // 2. 検索語句が入力された場合、名称に部分一致するものを検索
+                    ${nameQuery}
                 );
                 out center;
             `;
@@ -739,22 +756,33 @@
             nearbyList.innerHTML = '<p style="text-align: center; color: #007bff; padding: 2rem;">OpenStreetMapからデータを検索中...</p>';
 
             try {
+                // POSTリクエストでクエリを送信 (URLエンコードはfetchのbodyで実施)
                 const response = await fetch(apiUrl, {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
                     body: `data=${encodeURIComponent(query)}`
                 });
                 
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                if (!response.ok) {
+                     // 400 Bad Requestのエラー本文を取得してコンソールに表示
+                    const errorText = await response.text();
+                    console.error(`Overpass APIエラー本文: ${errorText}`);
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 
                 const data = await response.json();
                 
                 const restaurants = data.elements
-                    .filter(el => el.tags && el.tags.name)
+                    // nameタグを持つ要素のみをフィルタリング
+                    .filter(el => el.tags && el.tags.name) 
                     .map(el => ({
                         name: el.tags.name,
-                        category: el.tags.amenity,
+                        // amenityタグが設定されていない場合があるので、適切にフォールバック
+                        category: el.tags.amenity || el.tags.cuisine || '飲食店', 
                         cuisine: el.tags.cuisine || null,
-                        address: el.tags['addr:full'] || el.tags['addr:street'] || null,
+                        address: el.tags['addr:full'] || el.tags['addr:street'] || el.tags.addr || null,
                         phone: el.tags.phone || null,
                         website: el.tags.website || el.tags.url || null,
                         opening_hours: el.tags.opening_hours || null,
@@ -767,7 +795,7 @@
                 
             } catch (error) {
                 console.error("Overpass APIエラー:", error);
-                nearbyList.innerHTML = '<p class="status error">検索に失敗しました。時間をおいて再試行してください。</p>';
+                nearbyList.innerHTML = '<p class="status error">検索に失敗しました。詳細についてはコンソールを確認してください。</p>';
             }
         }
 
@@ -792,7 +820,10 @@
             }
             
             restaurants.forEach((data) => {
-                const icon = categoryIcons[data.category] || '🍴';
+                // OSMデータカテゴリを統一された表示名に変換
+                const categoryKey = data.category.toLowerCase();
+                const icon = categoryIcons[categoryKey] || '🍴';
+                
                 const customIcon = L.divIcon({
                     html: `<div style="font-size: 24px;">${icon}</div>`,
                     className: 'custom-marker',
@@ -813,8 +844,9 @@
                     'cafe': 'カフェ',
                     'fast_food': 'ファストフード',
                     'bar': 'バー',
-                    'pub': 'パブ'
-                }[data.category] || data.category;
+                    'pub': 'パブ',
+                    'food_court': 'フードコート'
+                }[categoryKey] || data.category;
                 
                 const item = document.createElement('div');
                 item.className = 'restaurant-item';
@@ -824,7 +856,7 @@
                         <span class="category-badge">${categoryName}</span>
                     </h4>
                     ${data.cuisine ? `<p>料理: ${data.cuisine}</p>` : ''}
-                    ${data.address ? `<p>📍 ${data.address}</p>` : ''}
+                    ${data.address ? `<p>📍 ${data.address || '住所情報なし'}</p>` : ''}
                     ${data.opening_hours ? `<p>🕐 ${data.opening_hours}</p>` : ''}
                 `;
                 // リストアイテムクリックでオーバーレイを開き、マップ移動
@@ -842,7 +874,7 @@
         // Firebaseに店舗情報を保存
         window.saveRestaurant = async function() {
             if (!db) {
-                document.getElementById('status').textContent = 'データベースが初期化されていません。';
+                document.getElementById('status').textContent = 'データベースが利用できません。';
                 document.getElementById('status').className = 'status error';
                 document.getElementById('status').style.display = 'block';
                 return;
@@ -875,8 +907,6 @@
                 longitude: selectedLng,
                 createdAt: new Date(),
                 source: 'firebase', // データソースを明記
-                // 注意: 現在は全ユーザー共有のコレクションに保存します
-                // 通常は /artifacts/${__app_id}/users/${userId}/restaurants に保存します
             };
 
             try {
@@ -955,7 +985,7 @@
             if (searchInput) {
                 filtered = filtered.filter(r => 
                     r.name.toLowerCase().includes(searchInput) ||
-                    r.description.toLowerCase().includes(searchInput)
+                    (r.description && r.description.toLowerCase().includes(searchInput))
                 );
             }
 
@@ -1022,10 +1052,10 @@
             
             // マイリストタブに切り替えた時にデータを取得
             if (tabName === 'mylist') {
-                if (window.userId) {
+                if (window.db) {
                     fetchRestaurants();
                 } else {
-                    document.getElementById('restaurantList').innerHTML = '<p class="status error">認証中です。しばらくお待ちください...</p>';
+                    document.getElementById('restaurantList').innerHTML = '<p class="status error">データベース接続待ちです。しばらくお待ちください...</p>';
                 }
             } else if (tabName === 'add') {
                  // 追加タブに切り替わったら、過去のマーカーを削除して、追加モードの準備
@@ -1076,8 +1106,8 @@
             
             // Webサイト
             if (restaurantData.website) {
-                websiteEl.href = restaurantData.website;
-                websiteEl.textContent = restaurantData.website.replace(/https?:\/\//, '').split('/')[0];
+                websiteEl.href = (restaurantData.website.startsWith('http')) ? restaurantData.website : `http://${restaurantData.website}`;
+                websiteEl.textContent = websiteEl.href.replace(/https?:\/\//, '').split('/')[0];
                 document.getElementById('detail-website').style.display = 'block';
             } else {
                 document.getElementById('detail-website').style.display = 'none';
@@ -1102,7 +1132,6 @@
             }
             
             // 画像（現在はプレースホルダー処理のみ）
-            // プレースホルダー画像URLの例: https://placehold.co/600x250/007bff/ffffff?text=${encodeURIComponent(restaurantData.name)}
             imgEl.style.display = 'none';
             imgPlaceholderEl.style.display = 'flex';
 
