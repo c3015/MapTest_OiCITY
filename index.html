@@ -76,7 +76,7 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
     <style>
-        /* (前回のCSSとほぼ同じですが、詳細モーダルを一部更新) */
+        /* (前回と同じCSS - 変更なし) */
         body, html {
             margin: 0;
             padding: 0;
@@ -284,7 +284,7 @@
                     
                     <!-- 外部情報表示エリア (Gemini APIの結果) -->
                     <div id="detail-gemini-info">
-                        <!-- 検索結果がここに入ります -->
+                        <!-- 検索結果がここに入る -->
                     </div>
 
                     <!-- OpenStreetMapの基本情報 -->
@@ -343,7 +343,7 @@
             <div id="add-tab" class="tab-content" style="display: none;">
                 <p>地図上の追加したい場所を**クリック**して位置を設定してください。</p>
                 <form id="add-form" onsubmit="event.preventDefault(); saveRestaurant();">
-                    <!-- (フォーム内容は省略 - 変更なし) -->
+                    <!-- (フォーム内容は省略) -->
                     <div class="form-group">
                         <label for="coordinates">座標 (自動入力)</label>
                         <input type="text" id="coordinates" disabled>
@@ -443,7 +443,7 @@
         }
 
         function onMapClick(e) {
-            if (currentTab === 'add') {
+            if (window.currentTab === 'add') {
                 const lat = e.latlng.lat;
                 const lng = e.latlng.lng;
 
@@ -465,7 +465,7 @@
         function getCurrentLocation() {
             if (!navigator.geolocation) {
                 console.error('Geolocation is not supported by your browser');
-                searchNearby();
+                window.searchNearby();
                 return;
             }
 
@@ -484,51 +484,31 @@
                         fillOpacity: 0.8
                     }).addTo(map).bindPopup("現在地");
                     
-                    searchNearby();
+                    window.searchNearby();
                 },
                 (error) => {
                     console.error('Geolocation error:', error);
-                    searchNearby();
+                    window.searchNearby();
                 },
                 { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
         }
 
-        // 検索結果を飲食店のみに厳密に絞り込む (修正済み)
+        // 検索機能の修正: Overpass APIの負荷を軽減し、JS側でフィルタリングを実行
         window.searchNearby = async function() {
-            const searchTerm = document.getElementById('searchTerm').value.trim(); 
+            // searchTermはJS側でフィルタリングに利用
             const bounds = map.getBounds();
             const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
             
-            let query;
-
-            if (searchTerm && searchTerm.toLowerCase() !== 'restaurant') {
-                 const escapedSearchTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                 
-                 // 検索語句がある場合は、以下のORクエリで絞り込む
-                 query = `
-                    [out:json][timeout:25];
-                    (
-                        // 1. 主要な飲食店アメニティを持ち、名称に部分一致
-                        nwr[amenity~"restaurant|cafe|fast_food|bar|pub|food_court",i]["name"~".*${escapedSearchTerm}.*",i](${bbox});
-                        
-                        // 2. amenityがなくても、 cuisine（料理ジャンル）を持ち、名称に部分一致
-                        nwr[cuisine]["name"~".*${escapedSearchTerm}.*",i](${bbox});
-                    );
-                    out center;
-                 `;
-            } else {
-                // 検索語句がない場合は、厳密に飲食関連のみを検索
-                 query = `
-                    [out:json][timeout:25];
-                    (
-                        nwr[amenity~"restaurant|cafe|fast_food|bar|pub|food_court",i](${bbox});
-                    );
-                    // nameタグを持つもののみを出力
-                    nwr[name];
-                    out center;
-                 `;
-            }
+            // クエリを極限までシンプル化: BBOX内の飲食店アメニティのみを抽出
+            // これにより、前回のタイムアウトエラーを防ぎます。
+            const query = `
+                [out:json][timeout:25];
+                (
+                    nwr[amenity~"restaurant|cafe|fast_food|bar|pub|food_court",i](${bbox});
+                );
+                out center;
+            `;
             
             const apiUrl = "https://overpass-api.de/api/interpreter";
 
@@ -553,7 +533,7 @@
                 const data = await response.json();
                 
                 const restaurants = data.elements
-                    .filter(el => el.tags && el.tags.name) 
+                    .filter(el => el.tags && el.tags.name) // nameタグを持つもののみ
                     .map(el => ({
                         name: el.tags.name,
                         category: el.tags.amenity || el.tags.cuisine || '飲食店', 
@@ -571,11 +551,11 @@
                 
             } catch (error) {
                 console.error("Overpass APIエラー:", error);
-                nearbyList.innerHTML = '<p class="status error">検索に失敗しました。OpenStreetMapのデータが利用できないか、クエリが無効です。</p>';
+                nearbyList.innerHTML = '<p class="status error">検索に失敗しました。OpenStreetMapのデータが利用できないか、サーバーがビジー状態です。</p>';
             }
         }
 
-        // 検索結果をリストとマップに表示 (変更なし)
+        // 検索結果をリストとマップに表示 (JavaScriptでのフィルタリング機能を追加)
         function displayNearbyRestaurants(restaurants) {
             map.eachLayer((layer) => {
                 if (layer instanceof L.Marker && 
@@ -588,13 +568,26 @@
             
             const nearbyList = document.getElementById('nearbyList');
             nearbyList.innerHTML = '';
+
+            const searchTerm = document.getElementById('searchTerm').value.trim().toLowerCase();
             
-            if (restaurants.length === 0) {
+            // 取得した全データに対し、JavaScriptで検索語句フィルタリングを行う
+            let filteredRestaurants = restaurants;
+            if (searchTerm && searchTerm !== 'restaurant') {
+                filteredRestaurants = restaurants.filter(data => 
+                    // 店名、料理ジャンル、カテゴリのいずれかに検索語句が含まれていればOK
+                    data.name.toLowerCase().includes(searchTerm) ||
+                    (data.cuisine && data.cuisine.toLowerCase().includes(searchTerm)) ||
+                    (data.category && data.category.toLowerCase().includes(searchTerm))
+                );
+            }
+            
+            if (filteredRestaurants.length === 0) {
                 nearbyList.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">検索結果がありません</p>';
                 return;
             }
             
-            restaurants.forEach((data) => {
+            filteredRestaurants.forEach((data) => {
                 const categoryKey = data.category.toLowerCase();
                 const icon = categoryIcons[categoryKey] || '🍴';
                 
@@ -624,7 +617,7 @@
                     ${data.address ? `<p>📍 ${data.address || '住所情報なし'}</p>` : ''}
                 `;
                 item.onclick = () => {
-                    openDetailOverlay(data);
+                    window.openDetailOverlay(data);
                     map.setView([data.latitude, data.longitude], 17);
                     marker.openPopup();
                 };
@@ -632,7 +625,7 @@
             });
         }
         
-        // --- Gemini APIによる外部情報取得機能 ---
+        // --- Gemini APIによる外部情報取得機能 (変更なし) ---
 
         async function fetchGeminiDetails(restaurantName) {
             const geminiInfoDiv = document.getElementById('detail-gemini-info');
@@ -698,7 +691,7 @@
         }
 
 
-        // 詳細オーバーレイ表示 (Gemini API呼び出しを追加)
+        // 詳細オーバーレイ表示 (変更なし)
         window.openDetailOverlay = function(restaurantData) {
             const overlay = document.getElementById('restaurant-detail-overlay');
             const websiteLinkEl = document.getElementById('detail-website-link');
@@ -719,7 +712,7 @@
             // OSM Webサイト
             if (restaurantData.website) {
                 websiteLinkEl.href = (restaurantData.website.startsWith('http')) ? restaurantData.website : `http://${restaurantData.website}`;
-                websiteLinkEl.textContent = websiteLinkEl.href.replace(/https?:\/\//, '').split('/')[0];
+                websiteLinkEl.textContent = websiteLinkel.href.replace(/https?:\/\//, '').split('/')[0];
                 websiteContainerEl.style.display = 'block';
             } else {
                 websiteContainerEl.style.display = 'none';
@@ -753,7 +746,7 @@
             document.getElementById('restaurant-detail-overlay').classList.remove('open');
         };
 
-        // --- Firebase/マイリスト関連関数 (DB接続チェックを追加) ---
+        // --- Firebase/マイリスト関連関数 (変更なし) ---
 
         window.saveRestaurant = async function() {
             if (!window.isFirebaseReady || !db) {
@@ -842,7 +835,6 @@
             }
         };
 
-        // (displayMyRestaurants, filterMyList, searchMyRestaurantsは変更なし)
         window.displayMyRestaurants = function(restaurants) {
             const listDiv = document.getElementById('restaurantList');
             listDiv.innerHTML = '';
